@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MOCK_TRANSACTIONS } from "@/lib/mock-transactions";
-import {
-  TransactionStatus,
-  TransactionSummaryMetrics,
-} from "@/features/transactions/types";
+import { getTransactions } from "@/lib/transactions-service";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -16,40 +12,24 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const q = (searchParams.get("q") || "").trim().toLowerCase();
-  const statusParam = (searchParams.get("status") || "").trim().toUpperCase();
+  try {
+    const result = getTransactions({
+      q: searchParams.get("q"),
+      status: searchParams.get("status"),
+      page: 1,
+      pageSize: 1,
+      fail,
+    });
 
-  const validStatuses: TransactionStatus[] = ["SUCCESS", "FAILED", "PENDING"];
-  const statusFilter = validStatuses.includes(statusParam as TransactionStatus)
-    ? (statusParam as TransactionStatus)
-    : null;
-
-  let filtered = MOCK_TRANSACTIONS;
-
-  if (q) {
-    filtered = filtered.filter(
-      (tx) =>
-        tx.id.toLowerCase().includes(q) ||
-        tx.customer.toLowerCase().includes(q)
+    return NextResponse.json({
+      ...result.summary,
+      total: result.total,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json(
+      { error: "Internal Server Error", message },
+      { status: 500 }
     );
   }
-
-  if (statusFilter) {
-    filtered = filtered.filter((tx) => tx.status === statusFilter);
-  }
-
-  const total = filtered.length;
-  const totalVolume = filtered.reduce((sum, tx) => sum + tx.amount, 0);
-  const successCount = filtered.filter((tx) => tx.status === "SUCCESS").length;
-  const failedCount = filtered.filter((tx) => tx.status === "FAILED").length;
-  const successRate = total > 0 ? (successCount / total) * 100 : 0;
-
-  const summary: TransactionSummaryMetrics & { total: number } = {
-    totalVolume,
-    successRate: parseFloat(successRate.toFixed(2)),
-    failedCount,
-    total,
-  };
-
-  return NextResponse.json(summary);
 }

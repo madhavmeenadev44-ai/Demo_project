@@ -2,15 +2,18 @@
 
 **Role:** Frontend Engineer (React / Next.js)  
 **Assessment:** FE-01 — Merchant Transactions Dashboard  
-**Stack:** Next.js (App Router), TypeScript, Tailwind CSS v4, Playwright
+**Architecture:** Server-First Next.js App Router  
+**Stack:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Playwright
 
 ---
 
 ## 1. Project Overview
 
-A responsive, production-ready merchant transactions dashboard that enables merchants to inspect real-time transaction volume, track settlement rates, search by transaction ID or customer name, filter by status, and navigate paginated records.
+A responsive, production-ready merchant transactions dashboard designed according to **Server-First Next.js App Router principles**.
 
-All data filtering, sorting, status matching, and pagination are executed server-side via Next.js App Router API route handlers (`/api/transactions`).
+The dashboard page and all display-only components are **Server Components by default**, streaming HTML directly from the server. Filter inputs, clipboard copy interactions, and header developer controls are isolated in leaf **Client Components** only where client-side interactivity is strictly required.
+
+All transaction searching, status filtering, newest-first sorting, metric aggregation, and pagination are handled by a shared server-side transaction engine (`lib/transactions-service.ts`) used by both the Server Component page and the mock API route (`GET /api/transactions`).
 
 ---
 
@@ -46,47 +49,32 @@ All data filtering, sorting, status matching, and pagination are executed server
 
 ---
 
-## 3. Architecture & Features
+## 3. Server-First Architecture & Component Boundaries
 
-### Mandatory Requirements Completed
-- **Deterministic Mock Dataset:** 200 stable, realistic transactions generated with a seeded PRNG (`lib/mock-transactions.ts`) containing IDs, ISO dates, customer names, integer amounts in paise, payment methods (`UPI`, `CARD`, `WALLET`), and statuses (`SUCCESS`, `FAILED`, `PENDING`).
-- **Server-Side API Handler (`GET /api/transactions`):**
-  - Search by transaction ID or customer name (case-insensitive).
-  - Status filtering (`SUCCESS`, `FAILED`, `PENDING`).
-  - Sorted newest first.
-  - Page slicing defaulting to 20 records per page.
-  - Returns `{ items, total, summary }` where `total` and `summary` reflect the entire filtered result set prior to pagination.
-  - Simulated latency of ~600 ms.
-  - HTTP 500 JSON error simulation when `fail=1` is provided.
-  - Companion aggregate endpoint at `/api/transactions/summary` for independent summary queries.
-- **Summary Metrics:**
-  - **Total Volume:** Sum of paise across all matching records, formatted as INR (`₹...`).
-  - **Success Rate:** Percentage of successful transactions across all matching records (`(successCount / total) * 100`).
-  - **Failed Transactions:** Count of failed transactions in the filtered dataset.
-  - Handles 0 matching transactions without division by zero.
-- **URL-Persisted State:**
-  - Search query `q`, status filter `status`, and page number `page` are stored directly in URL search parameters.
-  - Refreshing or sharing the URL reconstructs the exact state.
-  - Browser Back and Forward navigation updates UI and fetches data automatically.
-  - Filter modifications automatically reset the page to 1.
-  - Search input is debounced by ~300 ms.
-- **Loading, Empty, and Error States:**
-  - Loading skeleton indicators for cards and table/list rows.
-  - Race condition prevention using `AbortController` to discard stale in-flight requests.
-  - "No transactions found" empty state with a "Clear Filters" action.
-  - Error state with visible messaging and a functioning "Retry Request" button.
-  - Development toolbar with a "Simulate 500" toggle to test error handling and retry mechanisms directly.
-- **Mobile Responsiveness at 360 px:**
-  - Zero page-level horizontal overflow at 360 px width.
-  - Responsive layout: clean, readable transaction cards on mobile viewports (< 768 px) and full wide tabular view with overflow protection on desktop/tablet.
-  - Vertically stacked summary cards on mobile screens.
+### Component Hierarchy & Rendering Strategy
 
-### Optional Features Implemented
-1. **Mock Role Toggle & Admin CSV Export:**
-   - Header allows toggling between `MERCHANT` and `ADMIN` roles.
-   - When role is `ADMIN`, an "Export CSV" action is enabled that generates and downloads a formatted CSV of active transaction records.
-2. **Automated Playwright Test Suite:**
-   - 14 automated tests running across desktop Chrome and mobile (360 px viewport) testing search, status filter, page reset, URL persistence, empty states, HTTP 500 retry, and 360 px viewport overflow prevention.
+| Component / Module | Target Boundary | Purpose |
+| --- | --- | --- |
+| `app/layout.tsx` | **Server Component** | Static root shell with global font configuration and base styling. |
+| `app/page.tsx` | **Server Component** | Route entry point performing static redirect to `/transactions`. |
+| `app/transactions/page.tsx` | **Server Component** | Asynchronous page that awaits URL `searchParams`, invokes the shared server query service, and renders display components without client wrapper overhead. |
+| `app/transactions/loading.tsx` | **Server Component** | Route-level streaming skeleton fallback during page transitions. |
+| `app/transactions/error.tsx` | **Client Component** | Segment error boundary required by Next.js conventions with recovery `reset()` action. |
+| `DashboardHeader` | **Server Component** | Renders static title, description, and shell layout. |
+| `DashboardHeaderActions` | **Client Component** | Small leaf component managing role toggle (`MERCHANT` vs `ADMIN`), CSV export, and `fail=1` error simulation toggle. |
+| `TransactionSummary` | **Server Component** | Pure display component calculating and presenting filtered metrics. |
+| `SummaryCard` | **Server Component** | Individual statistic card presentation. |
+| `TransactionFilters` | **Client Component** | Controlled input with debounced typing (~300 ms), status dropdown, and Next.js `useRouter` / `usePathname` / `useSearchParams` URL updates. |
+| `TransactionTable` | **Server Component** | Renders desktop table and mobile card list markup on the server. |
+| `TransactionRow` & `TransactionMobileCard` | **Server Component** | Pure server-rendered row and card components. |
+| `StatusBadge` | **Server Component** | Pure SVG and CSS status badge for `SUCCESS`, `FAILED`, and `PENDING`. |
+| `CopyTransactionId` | **Client Component** | Leaf component isolating `navigator.clipboard` write and brief copied state. |
+| `EmptyState` | **Server Component** | Renders "No transactions found" with server `<Link href="/transactions" role="button">` clear action. |
+| `ErrorState` | **Server Component** | Displays error details and embeds the `RetryButton` client leaf. |
+| `RetryButton` | **Client Component** | Isolated button triggering `router.refresh()` or error boundary retry. |
+| `TransactionPagination` | **Server Component** | Generates Next.js `<Link>` elements preserving active query parameters without client state. |
+| `app/api/transactions/route.ts` | **Server Route Handler** | API endpoint implementing search, filter, sorting, pagination, and ~600 ms simulated delay. |
+| `lib/transactions-service.ts` | **Server Service** | Shared query and aggregation engine used by both page and API routes. |
 
 ---
 
@@ -94,83 +82,74 @@ All data filtering, sorting, status matching, and pagination are executed server
 
 ### Question 1: Which parts are Server Components and which are Client Components, and why?
 
-In our Next.js App Router architecture:
-
-- **Server Components:**
-  - **`app/layout.tsx` (Root Layout):** Static container providing global fonts, metadata, and body shell. Kept as a Server Component to avoid shipping unnecessary React hydration JavaScript to the client.
-  - **`app/transactions/page.tsx` & `app/page.tsx` (Page Shells):** Serve as server-rendered entry points. They render the page metadata and wrap interactive client components within a `<Suspense fallback={<DashboardLoadingSkeleton />}>` boundary.
-  - **`app/api/transactions/route.ts` & `app/api/transactions/summary/route.ts` (API Routes):** Execute entirely on the server runtime, handling parameter sanitization, latency simulation, sorting, filtering, and page slicing before returning JSON.
-
-- **Client Components (`"use client"`):**
-  - **`TransactionsDashboard` (`features/transactions/components/transactions-dashboard.tsx`):** Coordinates client-side interaction, role toggling, and CSV export.
-  - **`TransactionFilters` (`features/transactions/components/transaction-filters.tsx`):** Manages user keystrokes, debounced input timers, and DOM input events.
-  - **`TransactionTable` (`features/transactions/components/transaction-table.tsx`):** Handles clipboard copy state for transaction IDs and error retry callbacks.
-  - **`TransactionPagination` (`features/transactions/components/transaction-pagination.tsx`):** Handles pagination click events and page range calculation.
-  - **`DashboardHeader` (`components/dashboard-header.tsx`):** Handles developer error simulation toggle and manual refresh triggers.
-  - **`useTransactions` hook (`features/transactions/hooks/use-transactions.ts`):** Uses Next.js navigation hooks (`useSearchParams`, `usePathname`, `useRouter`) to synchronize URL query parameters with active fetches and manages `AbortController` lifecycles.
+**Actual Implementation:**
+- **The transactions page (`app/transactions/page.tsx`) is a Server Component.** It directly awaits the asynchronous `searchParams` Promise (in Next.js 16) and queries the shared server-side service (`getTransactions()`). It does not make an extraneous HTTP request back to itself, avoiding network serialization and waterfall delays.
+- **Display-only components are Server Components:** `DashboardHeader`, `TransactionSummary`, `SummaryCard`, `TransactionTable`, `TransactionRow`, `StatusBadge`, and `EmptyState` are pure Server Components. They do not ship any JavaScript bundle to the browser for rendering.
+- **Pagination is a Server Component:** `TransactionPagination` computes query URLs and renders standard Next.js `<Link>` elements, eliminating the need for client state or event handlers.
+- **Client Components are kept to the smallest possible leaf boundaries:**
+  - `TransactionFilters` uses `"use client"` because it handles controlled DOM typing events, debouncing timers, and URL query updates via `router.push()`.
+  - `CopyTransactionId` uses `"use client"` exclusively for browser clipboard access (`navigator.clipboard`).
+  - `DashboardHeaderActions` uses `"use client"` for role state switching and browser CSV downloads.
+  - `RetryButton` uses `"use client"` to trigger `router.refresh()` on click.
+  - `app/transactions/error.tsx` uses `"use client"` as required by Next.js error boundary specifications.
 
 **Why this separation?**  
-Next.js App Router enforces that components reading search parameters and listening to browser events execute on the client. Keeping the page shell and layout on the server optimizes initial page weight and enables streaming hydration via React Suspense, while confining interactive state to dedicated client leaf components.
+This adheres to the core philosophy of React Server Components: maximize initial HTML streaming, reduce client bundle size, eliminate client-side data fetching waterfalls, and introduce interactive client boundaries only where event listeners or browser APIs are genuinely needed.
 
 ---
 
 ### Question 2: What would you change for one million transactions instead of 200?
 
-If scaling from 200 mock in-memory records to one million (1,000,000+) real-world transactions:
+Scaling from 200 mock in-memory records to one million (1,000,000+) real-world transactions requires fundamental architectural shifts:
 
-1. **Database & Indexing:**
-   - Move from in-memory arrays to a relational database (e.g., PostgreSQL).
-   - Create composite B-Tree indexes matching filter query patterns:
-     - `CREATE INDEX idx_transactions_merchant_date ON transactions(merchant_id, date DESC);`
-     - `CREATE INDEX idx_transactions_merchant_status_date ON transactions(merchant_id, status, date DESC);`
-   - Use Trigram (`pg_trgm`) or GIN full-text search indexes on `customer_name` and `transaction_id` for case-insensitive substring searching (`ILIKE` / `to_tsvector`), avoiding full table scans.
+1. **Database-Level Filtering and Indexing:**
+   - In-memory JavaScript arrays (`Array.filter` / `Array.slice`) cannot handle 1,000,000 records without catastrophic memory usage and CPU saturation.
+   - Transition to a relational database (e.g., PostgreSQL) with tailored indexes:
+     - Composite index: `CREATE INDEX idx_merchant_status_date ON transactions(merchant_id, status, date DESC);`
+     - Full-text search or trigram index: `CREATE INDEX idx_transactions_search ON transactions USING gin(customer gin_trgm_ops, id gin_trgm_ops);` to ensure case-insensitive substring search runs via index seeks rather than full table scans.
 
-2. **Server-Side Aggregations & Precomputed Metrics:**
-   - Summing 1,000,000 rows (`SUM(amount)`, `COUNT(*)`) on every filter request introduces high latency.
-   - For unfiltered or time-bucketed metrics, use materialized views or Redis/worker aggregations updated via event streams (e.g., Kafka / Debezium CDC).
-   - For filtered queries, execute aggregate queries within SQL (`SELECT COUNT(*), SUM(amount), COUNT(*) FILTER (WHERE status = 'SUCCESS') FROM transactions WHERE ...`) rather than loading raw entities into application memory.
+2. **Keyset / Cursor-Based Pagination:**
+   - Offset pagination (`OFFSET 500000 LIMIT 20`) forces the database to scan and discard 500,000 rows.
+   - Switch to **keyset pagination** using `(date, id)` tuples:  
+     `WHERE (date, id) < ($last_date, $last_id) ORDER BY date DESC, id DESC LIMIT 20`. This ensures $O(1)$ constant-time page access regardless of how deep the merchant browses.
 
-3. **Pagination Strategy (Offset vs. Keyset / Cursor):**
-   - High `OFFSET` values (e.g., `OFFSET 500000 LIMIT 20`) require the database engine to scan and discard 500,000 records.
-   - Switch to **cursor-based (keyset) pagination** using `(date, id)` tuples:  
-     `WHERE (date, id) < ($last_date, $last_id) ORDER BY date DESC, id DESC LIMIT 20`. This performs an instant index seek regardless of depth.
+3. **Server-Side Aggregate Calculations:**
+   - Instead of calculating `totalVolume` and `successRate` across 1,000,000 rows on every request, execute targeted SQL aggregations:  
+     `SELECT COUNT(*), SUM(amount), COUNT(*) FILTER (WHERE status = 'SUCCESS') FROM transactions WHERE ...`
+   - For global/unfiltered merchant dashboard summaries, maintain precomputed materialized views or cache counters in Redis, incrementally updated via CDC (Change Data Capture) or background workers.
 
-4. **Caching & Read Replicas:**
-   - Direct read traffic to read-replica database pools.
-   - Cache frequent query results (e.g., page 1 of default view) with a short TTL (10–30s) or invalidation tags via Redis / Next.js Data Cache.
+4. **Multi-Tier Caching & Read Replicas:**
+   - Route dashboard read queries to database read replicas.
+   - Cache popular filtered pages using Redis or Next.js Data Cache with tag-based invalidation.
 
-5. **Observability & Query Profiling:**
-   - Monitor `pg_stat_statements` for slow queries.
-   - Use OpenTelemetry / APM to measure API p95/p99 latencies under load.
+5. **API Performance Monitoring:**
+   - Track database slow query logs (`pg_stat_statements`) and APM traces (OpenTelemetry) to identify p95 and p99 latency regressions.
 
 ---
 
 ## 5. Skipped Work
 
-The following optional features were skipped to prioritize correctness and the 3-hour assessment budget:
+The following optional features were skipped to focus on core requirements and Server-First refactoring:
 
 1. **Date-Range Filter:**
-   - *How to implement:* Add `startDate` and `endDate` date-picker inputs, pass ISO string bounds into URL parameters `from` and `to`, and filter via `WHERE date BETWEEN $start AND $end`.
+   - *How to implement:* Provide date picker inputs in `TransactionFilters` that set `startDate` and `endDate` query parameters, filtering via `BETWEEN` in the server service.
 2. **Daily Transaction Volume Chart:**
-   - *How to implement:* Group filtered transactions by `YYYY-MM-DD`, calculate daily total volume in paise, and render using a lightweight SVG charting component or Recharts.
-3. **Persistent Mock Authentication & Session JWTs:**
-   - *How to implement:* Add NextAuth / iron-session cookie-based authentication with role-based route middleware to protect admin routes. (A mock role toggle was included to demonstrate the admin-only CSV export feature).
+   - *How to implement:* Aggregate amounts grouped by date in `lib/transactions-service.ts` and render using an SVG line or bar chart component.
+3. **Database-Backed Authentication & Session Cookies:**
+   - *How to implement:* Implement NextAuth or iron-session cookies with middleware route guards. (A mock role toggle was included in `DashboardHeaderActions` to demonstrate the admin-only CSV export feature).
 
 ---
 
 ## 6. Verification Checklist
 
-- [x] Approximately 200 deterministic transactions generated with all 6 required fields.
-- [x] Amounts stored as integer paise and formatted with `formatINR`.
-- [x] Case-insensitive search on ID and customer name in route handler.
-- [x] Status filter executed in route handler.
-- [x] Sort by date (newest first).
-- [x] Pagination with default 20 records per page.
-- [x] Total calculated prior to page slice.
-- [x] 600 ms artificial delay and `fail=1` HTTP 500 simulation.
-- [x] Summary metrics calculate volume, success rate, and failed count across all matching records.
-- [x] URL state persistence (`q`, `status`, `page`).
-- [x] Loading, empty, and error/retry states.
-- [x] Responsive layout verified at 360 px viewport.
-- [x] Production build passes (`npm run build`).
-- [x] 14/14 automated Playwright tests pass (`npm run test`).
+- [x] Dashboard page (`app/transactions/page.tsx`) refactored to a Server Component.
+- [x] Shared server query service (`lib/transactions-service.ts`) used by page and API route.
+- [x] All display components (`TransactionSummary`, `SummaryCard`, `TransactionTable`, `TransactionRow`, `StatusBadge`, `EmptyState`) are Server Components.
+- [x] Pagination refactored to Server Component using Next.js `Link`.
+- [x] Client boundaries minimized to `TransactionFilters`, `CopyTransactionId`, `DashboardHeaderActions`, and `RetryButton`.
+- [x] API endpoint `GET /api/transactions` retains `{ items, total, summary }` and ~600 ms delay.
+- [x] `fail=1` produces HTTP 500 on API and triggers error handling on the page.
+- [x] URL state persistence across search, status, and pagination.
+- [x] Responsive layout verified at 360 px viewport width with zero horizontal overflow.
+- [x] 14/14 automated Playwright tests passing.
+- [x] Production build passes cleanly (`npm run build`).

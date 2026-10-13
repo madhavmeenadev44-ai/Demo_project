@@ -124,3 +124,4 @@ test.describe("Merchant Transactions Dashboard", () => {
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1); // 0-1px tolerance for subpixel antialiasing
   });
 });
+
