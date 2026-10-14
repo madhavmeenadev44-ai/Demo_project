@@ -34,3 +34,4 @@ export function RetryButton({ onRetry, className }: RetryButtonProps) {
     </button>
   );
 }
+

@@ -1,13 +1,13 @@
 import React from "react";
 import { Store } from "lucide-react";
 import { DashboardHeaderActions } from "@/components/dashboard-header-actions";
-import { Transaction } from "@/features/transactions/types";
+import { MockUser } from "@/lib/auth/users";
 
 interface DashboardHeaderProps {
-  currentTransactions?: Transaction[];
+  user?: MockUser | null;
 }
 
-export function DashboardHeader({ currentTransactions = [] }: DashboardHeaderProps) {
+export function DashboardHeader({ user }: DashboardHeaderProps) {
   return (
     <header className="mb-8 pb-6 border-b border-gray-200 dark:border-zinc-800">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -26,7 +26,7 @@ export function DashboardHeader({ currentTransactions = [] }: DashboardHeaderPro
         </div>
 
         {/* Action Toolbar (Client Leaf) */}
-        <DashboardHeaderActions currentTransactions={currentTransactions} />
+        <DashboardHeaderActions user={user} />
       </div>
     </header>
   );

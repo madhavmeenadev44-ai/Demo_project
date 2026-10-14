@@ -18,7 +18,7 @@ export default function TransactionsError({ error, reset }: ErrorProps) {
   return (
     <main className="min-h-screen bg-gray-50/50 dark:bg-zinc-950">
       <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <DashboardHeader currentTransactions={[]} />
+        <DashboardHeader />
         <ErrorState
           errorMessage={error.message || "An unexpected error occurred."}
           onRetry={reset}
@@ -27,3 +27,4 @@ export default function TransactionsError({ error, reset }: ErrorProps) {
     </main>
   );
 }
+

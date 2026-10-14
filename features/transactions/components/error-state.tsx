@@ -23,3 +23,4 @@ export function ErrorState({ errorMessage, onRetry }: ErrorStateProps) {
     </div>
   );
 }
+

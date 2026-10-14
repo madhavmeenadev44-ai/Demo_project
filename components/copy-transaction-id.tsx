@@ -39,3 +39,4 @@ export function CopyTransactionId({ id }: CopyTransactionIdProps) {
     </div>
   );
 }
+

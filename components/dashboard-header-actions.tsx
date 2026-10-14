@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck, Download, Bug, RefreshCw } from "lucide-react";
-import { Transaction } from "@/features/transactions/types";
+import { Download, Bug, RefreshCw, LogOut, User } from "lucide-react";
+import { MockUser } from "@/lib/auth/users";
+import { logoutAction } from "@/app/login/actions";
 
 interface DashboardHeaderActionsProps {
-  currentTransactions?: Transaction[];
+  user?: MockUser | null;
 }
 
-export function DashboardHeaderActions({ currentTransactions = [] }: DashboardHeaderActionsProps) {
+export function DashboardHeaderActions({ user }: DashboardHeaderActionsProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [role, setRole] = useState<"MERCHANT" | "ADMIN">("MERCHANT");
   const [isPending, startTransition] = useTransition();
 
   const isSimulatingError = searchParams.get("fail") === "1";
@@ -37,41 +37,63 @@ export function DashboardHeaderActions({ currentTransactions = [] }: DashboardHe
     });
   };
 
-  const handleRoleToggle = () => {
-    setRole((prev) => (prev === "MERCHANT" ? "ADMIN" : "MERCHANT"));
+  const handleLogout = () => {
+    startTransition(async () => {
+      await logoutAction();
+    });
   };
 
-  const handleExportCsv = () => {
-    if (currentTransactions.length === 0) {
-      alert("No transactions available to export.");
-      return;
-    }
+  // Construct secure export URL preserving active filter parameters
+  const exportParams = new URLSearchParams();
+  const q = searchParams.get("q");
+  const status = searchParams.get("status");
+  if (q) exportParams.set("q", q);
+  if (status && status !== "ALL") exportParams.set("status", status);
+  const exportQueryStr = exportParams.toString();
+  const exportUrl = exportQueryStr
+    ? `/api/transactions/export?${exportQueryStr}`
+    : "/api/transactions/export";
 
-    const headers = ["Transaction ID", "Date", "Customer", "Amount (Paise)", "Amount (INR)", "Method", "Status"];
-    const rows = currentTransactions.map((t) => [
-      t.id,
-      t.date,
-      `"${t.customer.replace(/"/g, '""')}"`,
-      t.amount,
-      (t.amount / 100).toFixed(2),
-      t.method,
-      t.status,
-    ]);
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `transactions_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const isAdmin = user?.role === "ADMIN";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {/* User & Role Badge */}
+      {user && (
+        <div
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 shadow-xs"
+          title={`Signed in as ${user.email}`}
+        >
+          <User className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-400" />
+          <span className="hidden sm:inline font-medium text-gray-900 dark:text-white">
+            {user.name}
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase ${
+              isAdmin
+                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                : "bg-gray-100 text-gray-700 dark:bg-zinc-700 dark:text-zinc-200 border border-gray-200 dark:border-zinc-600"
+            }`}
+          >
+            {user.role}
+          </span>
+        </div>
+      )}
+
+      {/* CSV Export Button: Strictly rendered only for verified ADMIN role */}
+      {isAdmin && (
+        <a
+          href={exportUrl}
+          download
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
+          title="Export matching transactions to CSV (Admin only)"
+          aria-label="Export CSV"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Export CSV</span>
+        </a>
+      )}
+
       {/* Refresh Action */}
       <button
         type="button"
@@ -84,32 +106,6 @@ export function DashboardHeaderActions({ currentTransactions = [] }: DashboardHe
         <RefreshCw className={`w-3.5 h-3.5 ${isPending ? "animate-spin" : ""}`} />
         <span className="hidden sm:inline">Refresh</span>
       </button>
-
-      {/* Role Toggle (Merchant / Admin) */}
-      <button
-        type="button"
-        onClick={handleRoleToggle}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
-        title="Toggle between Merchant and Admin roles"
-      >
-        <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
-        <span>
-          Role: <strong className="text-indigo-600 dark:text-indigo-400">{role}</strong>
-        </span>
-      </button>
-
-      {/* CSV Export Button (Admin Only Feature) */}
-      {role === "ADMIN" && (
-        <button
-          type="button"
-          onClick={handleExportCsv}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
-          title="Admin feature: Export transactions to CSV"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Export CSV</span>
-        </button>
-      )}
 
       {/* Developer Simulate 500 Error Toggle */}
       <button
@@ -125,6 +121,21 @@ export function DashboardHeaderActions({ currentTransactions = [] }: DashboardHe
         <Bug className="w-3.5 h-3.5 text-rose-500" />
         <span>{isSimulatingError ? "fail=1 (Active)" : "Simulate 500"}</span>
       </button>
+
+      {/* Logout Action */}
+      {user && (
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={isPending}
+          aria-label="Logout"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-600 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900/60 transition-colors cursor-pointer disabled:opacity-50"
+          title="Log out"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
+      )}
     </div>
   );
 }

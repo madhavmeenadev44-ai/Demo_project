@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getTransactions } from "@/lib/transactions-service";
+import { requireUser } from "@/lib/auth/session";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { TransactionSummary } from "@/features/transactions/components/transaction-summary";
 import { TransactionFilters } from "@/features/transactions/components/transaction-filters";
@@ -25,6 +26,9 @@ interface TransactionsPageProps {
 export default async function TransactionsPage({
   searchParams,
 }: TransactionsPageProps) {
+  // 1. Enforce server-side authentication: redirects unauthenticated users to /login
+  const user = await requireUser();
+
   const params = await searchParams;
 
   let isError = false;
@@ -48,7 +52,7 @@ export default async function TransactionsPage({
     return (
       <main className="min-h-screen bg-gray-50/50 dark:bg-zinc-950">
         <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <DashboardHeader currentTransactions={[]} />
+          <DashboardHeader user={user} />
           <ErrorState errorMessage={errorMessage} />
         </div>
       </main>
@@ -61,7 +65,7 @@ export default async function TransactionsPage({
     <main className="min-h-screen bg-gray-50/50 dark:bg-zinc-950">
       <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Dashboard Top Header (Server Component with isolated Client Actions) */}
-        <DashboardHeader currentTransactions={data.items} />
+        <DashboardHeader user={user} />
 
         {/* Summary Metrics Cards (Server Component) */}
         <TransactionSummary

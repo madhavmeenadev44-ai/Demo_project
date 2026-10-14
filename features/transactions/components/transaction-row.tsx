@@ -78,3 +78,4 @@ export function TransactionMobileCard({ transaction: tx }: TransactionRowProps) 
     </div>
   );
 }
+

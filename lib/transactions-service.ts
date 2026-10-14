@@ -104,3 +104,4 @@ export function getTransactions(options: GetTransactionsOptions = {}): Transacti
     status: statusFilter,
   };
 }
+
