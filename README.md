@@ -177,8 +177,9 @@ The following optional features were skipped to focus on core requirements, Serv
    - *How to implement:* Provide date picker inputs in `TransactionFilters` that set `startDate` and `endDate` query parameters, filtering via `BETWEEN` in `lib/transactions-service.ts`.
 2. **Daily Transaction Volume Chart:**
    - *How to implement:* Aggregate amounts grouped by date in `lib/transactions-service.ts` and render using an SVG line or bar chart component.
-3. **Database-Backed Identity & OAuth Providers:**
-   - *How to implement:* Integrate Auth.js (NextAuth) or Supabase Auth connected to a PostgreSQL database with MFA and password hashing (bcrypt/argon2).
+3. **TanStack Query (or similar) for Fetching and Caching:**
+   - *Why skipped:* A Server-First App Router architecture was intentionally adopted—Server Components query the data service directly on the server without client-side waterfalls, while Next.js handles streaming, loading skeletons, and route-level caching.
+   - *How to implement:* If transitioning to a client-side data fetching model, wrap the root layout in `<QueryClientProvider>`, prefetch initial transaction queries on the server with `queryClient.prefetchQuery()` and `<HydrationBoundary>`, and consume data in client views via `useQuery({ queryKey: ['transactions', { q, status, page, pageSize }], queryFn: ... })`. The query key would incorporate the search parameters to provide automatic stale-while-revalidate caching and background refetching across filter transitions.
 
 ---
 
