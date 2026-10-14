@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { MockUser, UserRole, findUserById } from "@/lib/auth/users";
 
@@ -99,6 +100,7 @@ export async function createSession(user: MockUser): Promise<void> {
  * Reads and verifies the session cookie, returning trusted MockUser or null.
  */
 export async function getSessionUser(): Promise<MockUser | null> {
+  await connection();
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(COOKIE_NAME);
 
